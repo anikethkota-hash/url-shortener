@@ -163,7 +163,8 @@
       background: #f9fafb;
     }
     .slug-input,
-    .long-input {
+    .long-input,
+    .desc-input {
       width: 100%;
       font-size: 0.8rem;
       padding: 0.25rem 0.4rem;
@@ -172,7 +173,8 @@
       box-sizing: border-box;
     }
     .slug-input:focus,
-    .long-input:focus {
+    .long-input:focus,
+    .desc-input:focus {
       outline: none;
       border-color: #6366f1;
       box-shadow: 0 0 0 1px #6366f1;
@@ -226,8 +228,8 @@
   <div class="card">
     <h1>Aniketh's Personal URL Shortener</h1>
     <p>
-      <strong>Public links</strong> are stored in <code>links.json</code> in this public repo (works for everyone).<br />
-      <strong>Private links</strong> are stored in <code>links.json</code> in a private repo (works only in browsers where your PAT is configured).<br />
+      Public links are stored in <code>links.json</code> in this public repo.<br />
+      Private links are stored in <code>links.json</code> in a separate private repo.<br />
       Short links look like: <code>/slug</code>
     </p>
 
@@ -250,13 +252,19 @@
       <div class="field">
         <label for="longUrl">Long URL</label>
         <input id="longUrl" type="url" placeholder="https://example.com/very/long/link" required />
-        <div class="hint">Do not omit <code>https://</code> or <code>http://</code> in the URL.</div>
+        <div class="hint">If you omit <code>https://</code> it will be added.</div>
       </div>
 
       <div class="field">
         <label for="slug">Custom short name (optional)</label>
         <input id="slug" type="text" placeholder="e.g. cs-docs" />
         <div class="hint">Letters, numbers, dashes only. Leave empty to auto-generate.</div>
+      </div>
+
+      <div class="field">
+        <label for="description">Description (optional)</label>
+        <input id="description" type="text" placeholder="e.g. Product requirement doc for XYZ" />
+        <div class="hint">Purely for your own reference. Not used in redirects.</div>
       </div>
 
       <div class="field">
@@ -304,10 +312,11 @@
       <table>
         <thead>
           <tr>
-            <th style="width:18%;">Slug</th>
-            <th style="width:44%;">Long URL</th>
-            <th style="width:20%;">Short URL</th>
-            <th style="width:18%;">Actions</th>
+            <th style="width:16%;">Slug</th>
+            <th style="width:32%;">Long URL</th>
+            <th style="width:22%;">Description</th>
+            <th style="width:14%;">Short URL</th>
+            <th style="width:16%;">Actions</th>
           </tr>
         </thead>
         <tbody id="manageTableBody"></tbody>
@@ -335,6 +344,12 @@
 
     const STORAGE_PUBLIC = "public";
     const STORAGE_PRIVATE = "private";
+
+    const cache = {
+      public: { links: {}, sha: null, loaded: false },
+      private: { links: {}, sha: null, loaded: false }
+    };
+
     let currentStorage = STORAGE_PUBLIC;
 
     // BASE URL for short links, derived from where this page is served.
@@ -367,7 +382,7 @@
         for (let i = 0; i < SLUG_LENGTH; i++) {
           slug += chars[Math.floor(Math.random() * chars.length)];
         }
-      } while (existingMap[slug]);
+      } while (Object.prototype.hasOwnProperty.call(existingMap, slug));
       return slug;
     }
 
@@ -463,22 +478,39 @@
       }
     }
 
-    // --- GitHub API helpers ---
-    let latestShaPublic = null;
-    let latestShaPrivate = null;
-    let adminLinks = {};
+    function getCache(storage) {
+      return storage === STORAGE_PRIVATE ? cache.private : cache.public;
+    }
 
-    async function fetchLinksViaApi(token, storage) {
+    // Normalize any shape in links.json to { url, description }
+    function normalizeLinksObject(rawLinks) {
+      const result = {};
+      if (!rawLinks || typeof rawLinks !== "object") return result;
+      for (const [slug, value] of Object.entries(rawLinks)) {
+        if (typeof value === "string") {
+          result[slug] = { url: value, description: "" };
+        } else if (value && typeof value === "object") {
+          result[slug] = {
+            url: typeof value.url === "string" ? value.url : "",
+            description: typeof value.description === "string" ? value.description : ""
+          };
+        }
+      }
+      return result;
+    }
+
+    // --- GitHub API helpers ---
+    async function fetchLinksForStorage(token, storage) {
       const cfg = getRepoConfig(storage);
-      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
+      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${encodeURIComponent(cfg.branch)}`;
       const headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": "Bearer " + token
       };
 
-      const res = await fetch(apiUrl + "?ref=" + encodeURIComponent(cfg.branch), { headers });
+      const res = await fetch(apiUrl, { headers });
       if (!res.ok) {
-        throw new Error("Failed to read links.json via API: HTTP " + res.status);
+        throw new Error("Failed to read links.json via API: HTTP " + res.status + " (" + storage + ")");
       }
 
       const json = await res.json();
@@ -490,57 +522,49 @@
         console.error("Failed to parse JSON", e);
         data = { links: {} };
       }
-      if (!data.links || typeof data.links !== "object") data.links = {};
-      adminLinks = data.links;
-
-      if (storage === STORAGE_PUBLIC) {
-        latestShaPublic = json.sha;
-      } else {
-        latestShaPrivate = json.sha;
-      }
-
-      return adminLinks;
+      const links = normalizeLinksObject(data.links || {});
+      const c = getCache(storage);
+      c.links = links;
+      c.sha = json.sha;
+      c.loaded = true;
+      return links;
     }
 
-    async function commitLinksViaApi(token, links, message, storage) {
+    async function saveLinksForStorage(token, storage) {
       const cfg = getRepoConfig(storage);
       const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
       const headers = {
         "Accept": "application/vnd.github+json",
-        "Authorization": "Bearer " + token
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
       };
+      const c = getCache(storage);
 
-      let currentSha = storage === STORAGE_PUBLIC ? latestShaPublic : latestShaPrivate;
-      if (!currentSha) {
-        await fetchLinksViaApi(token, storage);
-        currentSha = storage === STORAGE_PUBLIC ? latestShaPublic : latestShaPrivate;
-      }
-
-      const data = { links: links };
-      const newContent = JSON.stringify(data, null, 2) + "\n";
+      const payload = {
+        links: c.links
+      };
+      const newContent = JSON.stringify(payload, null, 2) + "\n";
       const body = {
-        message: message,
+        message: "Update links.json (" + storage + ")",
         content: b64Encode(newContent),
-        sha: currentSha,
         branch: cfg.branch
       };
+      if (c.sha) {
+        body.sha = c.sha;
+      }
 
       const res = await fetch(apiUrl, {
         method: "PUT",
-        headers: { ...headers, "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(body)
       });
       if (!res.ok) {
         const txt = await res.text();
         console.error("PUT error", txt);
-        throw new Error("Failed to commit links.json: HTTP " + res.status);
+        throw new Error("Failed to commit links.json: HTTP " + res.status + " (" + storage + ")");
       }
       const updated = await res.json();
-      if (storage === STORAGE_PUBLIC) {
-        latestShaPublic = updated.content.sha;
-      } else {
-        latestShaPrivate = updated.content.sha;
-      }
+      c.sha = updated.content.sha;
     }
 
     function updateStorageLabels() {
@@ -560,7 +584,8 @@
     }
 
     function renderManageTable() {
-      const entries = Object.entries(adminLinks || {});
+      const c = getCache(currentStorage);
+      const entries = Object.entries(c.links || {});
       const section = document.getElementById("manageSection");
       const tbody = document.getElementById("manageTableBody");
       const countPill = document.getElementById("count-pill");
@@ -572,7 +597,7 @@
 
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 4;
+        td.colSpan = 5;
         td.style.padding = "0.8rem";
         td.style.textAlign = "center";
         td.style.color = "#6b7280";
@@ -583,7 +608,7 @@
       }
 
       entries.sort((a, b) => a[0].localeCompare(b[0]));
-      for (const [slug, longUrl] of entries) {
+      for (const [slug, obj] of entries) {
         const tr = document.createElement("tr");
 
         const tdSlug = document.createElement("td");
@@ -596,9 +621,16 @@
         const tdLong = document.createElement("td");
         const longInput = document.createElement("input");
         longInput.type = "url";
-        longInput.value = longUrl;
+        longInput.value = obj.url || "";
         longInput.className = "long-input";
         tdLong.appendChild(longInput);
+
+        const tdDesc = document.createElement("td");
+        const descInput = document.createElement("input");
+        descInput.type = "text";
+        descInput.value = obj.description || "";
+        descInput.className = "desc-input";
+        tdDesc.appendChild(descInput);
 
         const tdShort = document.createElement("td");
         const shortLink = document.createElement("a");
@@ -623,6 +655,7 @@
         tdActions.appendChild(deleteBtn);
         tr.appendChild(tdSlug);
         tr.appendChild(tdLong);
+        tr.appendChild(tdDesc);
         tr.appendChild(tdShort);
         tr.appendChild(tdActions);
         tbody.appendChild(tr);
@@ -636,6 +669,7 @@
 
           let newSlug = normalizeSlug(slugInput.value.trim());
           const newLong = normalizeUrl(longInput.value.trim());
+          const newDesc = descInput.value.trim();
 
           if (!newSlug) {
             showManageError("Slug cannot be empty. Use letters, numbers, and dashes.");
@@ -646,25 +680,25 @@
             return;
           }
 
-          if (newSlug !== slug && adminLinks[newSlug] && adminLinks[newSlug] !== newLong) {
-            showManageError("Slug '" + newSlug + "' is already used for another URL.");
+          // Check for slug conflict within the same store
+          const existingLinks = getCache(currentStorage).links;
+          if (newSlug !== slug && Object.prototype.hasOwnProperty.call(existingLinks, newSlug)) {
+            showManageError("Slug '" + newSlug + "' already exists in this store.");
             return;
           }
 
-          if (newSlug !== slug) {
-            delete adminLinks[slug];
-          }
-          adminLinks[newSlug] = newLong;
+          // Apply changes to cache
+          const storeLinks = getCache(currentStorage).links;
+          delete storeLinks[slug];
+          storeLinks[newSlug] = {
+            url: newLong,
+            description: newDesc
+          };
 
           try {
             setManageStatus("Saving changes...");
             rememberTokenIfInlinePresent();
-            await commitLinksViaApi(
-              token,
-              adminLinks,
-              `Update ${currentStorage} short link '${slug}' -> '${newSlug}'`,
-              currentStorage
-            );
+            await saveLinksForStorage(token, currentStorage);
             showManageSuccess("Updated link '" + newSlug + "'.");
             renderManageTable();
           } catch (err) {
@@ -686,16 +720,12 @@
             return;
           }
 
-          delete adminLinks[slug];
           try {
+            const storeLinks = getCache(currentStorage).links;
+            delete storeLinks[slug];
             setManageStatus("Deleting link...");
             rememberTokenIfInlinePresent();
-            await commitLinksViaApi(
-              token,
-              adminLinks,
-              `Delete ${currentStorage} short link '${slug}'`,
-              currentStorage
-            );
+            await saveLinksForStorage(token, currentStorage);
             showManageSuccess("Deleted link '" + slug + "'.");
             renderManageTable();
           } catch (err) {
@@ -721,7 +751,6 @@
             radio.value === STORAGE_PRIVATE ? STORAGE_PRIVATE : STORAGE_PUBLIC;
 
           updateStorageLabels();
-          adminLinks = {};
           setManageStatus("");
           document.getElementById("manageSection").style.display = "none";
           document.getElementById("manageError").style.display = "none";
@@ -732,9 +761,10 @@
       const form = document.getElementById("form");
       const longUrlInput = document.getElementById("longUrl");
       const slugInput = document.getElementById("slug");
+      const descInput = document.getElementById("description");
       const loadLinksBtn = document.getElementById("loadLinksBtn");
 
-      // ---- Create new link ----
+      // ---- Create new link (with duplicate check across public + private) ----
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const token = getToken();
@@ -760,28 +790,48 @@
           }
         }
 
+        const description = descInput.value.trim();
+
         try {
           setLoading(true);
           document.getElementById("error").style.display = "none";
 
-          await fetchLinksViaApi(token, currentStorage);
-          if (slug && adminLinks[slug] && adminLinks[slug] !== normalizedLong) {
-            showError("Slug '" + slug + "' is already used for another URL.");
+          // Load both public and private links for duplicate checking
+          const publicLinks = await fetchLinksForStorage(token, STORAGE_PUBLIC).catch((err) => {
+            console.error("Error reading public links for duplicate check:", err);
+            return {};
+          });
+          const privateLinks = await fetchLinksForStorage(token, STORAGE_PRIVATE).catch((err) => {
+            console.error("Error reading private links for duplicate check:", err);
+            return {};
+          });
+
+          const combined = { ...publicLinks, ...privateLinks };
+
+          if (slug && Object.prototype.hasOwnProperty.call(combined, slug)) {
+            showError(
+              "Slug '" +
+                slug +
+                "' already exists in either the public or private store. Please choose a different slug."
+            );
             setLoading(false);
             return;
           }
+
           if (!slug) {
-            slug = generateRandomSlug(adminLinks);
+            slug = generateRandomSlug(combined);
           }
 
-          adminLinks[slug] = normalizedLong;
+          // Now work on the selected storage only
+          const targetCache = getCache(currentStorage);
+          // Ensure we have fresh links for target storage (fetchLinksForStorage above already did this)
+          targetCache.links[slug] = {
+            url: normalizedLong,
+            description: description
+          };
+
           rememberTokenIfInlinePresent();
-          await commitLinksViaApi(
-            token,
-            adminLinks,
-            `Add ${currentStorage} short link '${slug}'`,
-            currentStorage
-          );
+          await saveLinksForStorage(token, currentStorage);
 
           const shortUrl = buildShortUrl(slug);
           showSuccess(
@@ -791,12 +841,17 @@
               shortUrl +
               "</a><br />Destination: " +
               normalizedLong +
+              (description
+                ? "<br />Description: " + description
+                : "") +
               (currentStorage === STORAGE_PRIVATE
                 ? '<br /><span class="hint">This is a <strong>private</strong> link. It will only resolve in browsers where your PAT is stored.</span>'
                 : '<br /><span class="hint">This is a <strong>public</strong> link. It will work for anyone.</span>')
           );
 
           slugInput.value = "";
+          // leave description as-is or clear it; up to you
+          // descInput.value = "";
         } catch (err) {
           console.error(err);
           showError(err.message || "Something went wrong.");
@@ -816,8 +871,9 @@
         document.getElementById("manageSuccess").style.display = "none";
         setManageStatus("Loading " + currentStorage + " links from repo...");
         try {
-          await fetchLinksViaApi(token, currentStorage);
-          if (!Object.keys(adminLinks).length) {
+          await fetchLinksForStorage(token, currentStorage);
+          const c = getCache(currentStorage);
+          if (!Object.keys(c.links).length) {
             setManageStatus(
               "No links found in the selected links.json. Create one above."
             );
