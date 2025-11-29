@@ -765,81 +765,111 @@
       const descInput = document.getElementById("description");
       const loadLinksBtn = document.getElementById("loadLinksBtn");
 
-      // Create new link (description optional, no cross-repo dedupe)
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const token = getToken();
-        if (!token) {
-          showError("Please paste your GitHub PAT.");
-          return;
-        }
+      // Create new link (description optional, cross-store slug check)
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const token = getToken();
+  if (!token) {
+    showError("Please paste your GitHub PAT.");
+    return;
+  }
 
-        const normalizedLong = normalizeUrl(longUrlInput.value);
-        if (!normalizedLong) {
-          showError("Please enter a valid URL.");
-          return;
-        }
+  const normalizedLong = normalizeUrl(longUrlInput.value);
+  if (!normalizedLong) {
+    showError("Please enter a valid URL.");
+    return;
+  }
 
-        let slug = slugInput.value.trim();
-        if (slug) {
-          slug = normalizeSlug(slug);
-          if (!slug) {
-            showError(
-              "Custom short name becomes empty after cleaning. Use letters, numbers, and dashes."
-            );
-            return;
-          }
-        }
+  let slug = slugInput.value.trim();
+  if (slug) {
+    slug = normalizeSlug(slug);
+    if (!slug) {
+      showError(
+        "Custom short name becomes empty after cleaning. Use letters, numbers, and dashes."
+      );
+      return;
+    }
+  }
 
-        const description = descInput.value.trim();
+  const description = descInput.value.trim();
 
-        try {
-          setLoading(true);
-          document.getElementById("error").style.display = "none";
+  try {
+    setLoading(true);
+    document.getElementById("error").style.display = "none";
 
-          // Only work with the selected store
-          const links = await fetchLinksForStorage(token, currentStorage);
-          if (slug && Object.prototype.hasOwnProperty.call(links, slug)) {
-            showError("Slug '" + slug + "' already exists in this store. Please choose a different slug.");
-            setLoading(false);
-            return;
-          }
+    // 1) Load BOTH stores to check for global slug conflict
+    let publicLinks = {};
+    let privateLinks = {};
 
-          const finalSlug = slug || generateRandomSlug(links);
+    try {
+      publicLinks = await fetchLinksForStorage(token, STORAGE_PUBLIC);
+    } catch (err) {
+      console.warn("Could not load PUBLIC links for slug check:", err);
+      publicLinks = {};
+    }
 
-          const c = getCache(currentStorage);
-          c.links[finalSlug] = {
-            url: normalizedLong,
-            description: description
-          };
+    try {
+      privateLinks = await fetchLinksForStorage(token, STORAGE_PRIVATE);
+    } catch (err) {
+      console.warn("Could not load PRIVATE links for slug check:", err);
+      privateLinks = {};
+    }
 
-          rememberTokenIfInlinePresent();
-          await saveLinksForStorage(token, currentStorage);
+    const combined = { ...publicLinks, ...privateLinks };
 
-          const shortUrl = buildShortUrl(finalSlug);
-          showSuccess(
-            'Short URL: <a href="' +
-              shortUrl +
-              '" target="_blank" rel="noopener noreferrer">' +
-              shortUrl +
-              "</a><br />Destination: " +
-              normalizedLong +
-              (description ? "<br />Description: " + description : "") +
-              (currentStorage === STORAGE_PRIVATE
-                ? '<br /><span class="hint">This is a <strong>private</strong> link. It will only resolve in browsers where your PAT is stored.</span>'
-                : '<br /><span class="hint">This is a <strong>public</strong> link. It will work for anyone.</span>')
-          );
+    if (slug && Object.prototype.hasOwnProperty.call(combined, slug)) {
+      showError(
+        "Slug '" +
+          slug +
+          "' already exists in either the public or private store. Please choose a different slug."
+      );
+      setLoading(false);
+      return;
+    }
 
-          slugInput.value = "";
-          // description: you can clear it or leave it; choose what feels nicer
-          // descInput.value = "";
-        } catch (err) {
-          console.error(err);
-          showError(err.message || "Something went wrong.");
-        } finally {
-          setLoading(false);
-        }
-      });
+    // 2) Decide final slug, ensuring it is unique across BOTH stores
+    const currentLinks =
+      currentStorage === STORAGE_PUBLIC ? publicLinks : privateLinks;
+    const finalSlug = slug || generateRandomSlug(combined);
+
+    // 3) Attach to the selected store only
+    const targetCache = getCache(currentStorage);
+    // make sure cache for current store is in sync with links we just fetched
+    targetCache.links = normalizeLinksObject(
+      currentStorage === STORAGE_PUBLIC ? publicLinks : privateLinks
+    );
+    targetCache.links[finalSlug] = {
+      url: normalizedLong,
+      description: description
+    };
+
+    rememberTokenIfInlinePresent();
+    await saveLinksForStorage(token, currentStorage);
+
+    const shortUrl = buildShortUrl(finalSlug);
+    showSuccess(
+      'Short URL: <a href="' +
+        shortUrl +
+        '" target="_blank" rel="noopener noreferrer">' +
+        shortUrl +
+        "</a><br />Destination: " +
+        normalizedLong +
+        (description ? "<br />Description: " + description : "") +
+        (currentStorage === STORAGE_PRIVATE
+          ? '<br /><span class="hint">This is a <strong>private</strong> link. It will only resolve in browsers where your PAT is stored.</span>'
+          : '<br /><span class="hint">This is a <strong>public</strong> link. It will work for anyone.</span>')
+    );
+
+    slugInput.value = "";
+    // Optionally clear description:
+    // descInput.value = "";
+  } catch (err) {
+    console.error(err);
+    showError(err.message || "Something went wrong.");
+  } finally {
+    setLoading(false);
+  }
+});
 
       // Load & manage existing links
       loadLinksBtn.addEventListener("click", async () => {
