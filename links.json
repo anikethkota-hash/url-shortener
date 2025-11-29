@@ -3,6 +3,10 @@
     "homepage": {
       "url": "https://www.contentstack.com/",
       "description": "Contentstack Homepage"
+    },
+    "intranet": {
+      "url": "https://sites.google.com/contentstack.com/intranet/home",
+      "description": "demo"
     }
   }
 }
