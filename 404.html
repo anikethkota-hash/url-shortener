@@ -60,19 +60,30 @@
   </div>
 
   <script>
-    // ===== MUST MATCH index.html CONFIG =====
-    const PUBLIC_LINKS_PATH   = "links.json";       // public links file in public repo
-    const PRIVATE_OWNER       = "anikethkota-hash";  // owner of PRIVATE repo
-    const PRIVATE_REPO        = "private-repo";
-    const PRIVATE_BRANCH      = "main";
-    const PRIVATE_LINKS_PATH  = "links.json";
-    const TOKEN_STORAGE_KEY   = "urlShortenerPrivateToken";
-    // ========================================
+    // ===== CONFIG – MUST MATCH index.html =====
+
+    // Public links live in a SEPARATE public repo
+    const PUBLIC_OWNER      = "anikethkota-hash";   // e.g. "anikethshenoy"
+    const PUBLIC_REPO       = "url-shortener";    // e.g. "url-shortener-public-links"
+    const PUBLIC_BRANCH     = "main";                  // or "master"
+    const PUBLIC_LINKS_PATH = "links.json";            // path inside that repo
+
+    // Private links live in a PRIVATE repo (same as in index.html)
+    const PRIVATE_OWNER      = "anikethkota-hash"; // probably same as PUBLIC_OWNER
+    const PRIVATE_REPO       = "private-db>";  // e.g. "url-shortener-private"
+    const PRIVATE_BRANCH     = "main";
+    const PRIVATE_LINKS_PATH = "links.json";
+
+    // Storage key for the PAT that index.html writes to localStorage
+    const TOKEN_STORAGE_KEY  = "urlShortenerPrivateToken";
+
+    // =========================================
 
     function b64Decode(str) {
       return decodeURIComponent(escape(atob(str)));
     }
 
+    // Handles both string and { url, description } shapes
     function getUrlFromEntry(entry) {
       if (!entry) return null;
       if (typeof entry === "string") return entry;
@@ -82,24 +93,24 @@
 
     (function () {
       const url = new URL(window.location.href);
-      const parts = url.pathname.split("/").filter(Boolean);
+      const parts = url.pathname.split("/").filter(Boolean); // ["pages-repo","slug"]
 
       if (parts.length === 0) {
         window.location.href = url.origin + "/";
         return;
       }
 
-      // Repo-based GitHub Pages: /<public-repo>/<slug>
-      const repoSegment = parts[0];
-      const slug = parts.length > 1 ? parts[1] : null;
+      // For a repo-based Pages site: /<pages-repo>/<slug>
+      const pagesRepoSegment = parts[0];
+      const slug = parts.length > 1 ? parts.slice(1).join("/") : null;
 
-      const basePath = "/" + repoSegment + "/";
-      const baseUrl = url.origin + basePath;
+      const basePath = "/" + pagesRepoSegment + "/";
+      const baseUrl  = url.origin + basePath;
 
-      const titleEl = document.getElementById("title");
-      const msgEl = document.getElementById("message");
+      const titleEl  = document.getElementById("title");
+      const msgEl    = document.getElementById("message");
       const homeLink = document.getElementById("home-link");
-      homeLink.href = baseUrl;
+      homeLink.href  = baseUrl;
 
       if (!slug) {
         window.location.href = baseUrl;
@@ -108,7 +119,7 @@
 
       function redirectTo(target) {
         titleEl.textContent = "Redirecting…";
-        msgEl.textContent = "Sending you to " + target;
+        msgEl.textContent   = "Sending you to " + target;
         window.location.href = target;
       }
 
@@ -127,17 +138,34 @@
           "It may have been deleted or not created yet.";
       }
 
-      // 1) Try PUBLIC links.json from this repo (no auth)
-      fetch(basePath + PUBLIC_LINKS_PATH + "?cacheBust=" + Date.now())
+      function showPrivateFetchError(status) {
+        titleEl.textContent = "Unable to resolve short link";
+        msgEl.textContent =
+          "An error occurred while reading the private links.json file (HTTP " + status + "). " +
+          "Check that PRIVATE_OWNER, PRIVATE_REPO, branch, path, and your PAT scopes are correct.";
+      }
+
+      // 1) PUBLIC lookup: use raw.githubusercontent.com on the separate public repo (no auth required)
+      const publicRawUrl =
+        "https://raw.githubusercontent.com/" +
+        PUBLIC_OWNER + "/" +
+        PUBLIC_REPO + "/" +
+        encodeURIComponent(PUBLIC_BRANCH) + "/" +
+        PUBLIC_LINKS_PATH +
+        "?cacheBust=" + Date.now();
+
+      console.log("[404] Fetching PUBLIC links.json from:", publicRawUrl);
+
+      fetch(publicRawUrl)
         .then((res) => {
           if (!res.ok) {
-            // If public file is missing or error, treat as no public entries.
+            console.warn("Public links.json fetch failed:", res.status);
             return null;
           }
           return res.json();
         })
         .then((data) => {
-          const links = (data && data.links) || {};
+          const links = data && data.links ? data.links : {};
           const entry = links[slug];
           const target = getUrlFromEntry(entry);
 
@@ -146,7 +174,7 @@
             return;
           }
 
-          // 2) Not found in public, try PRIVATE store (requires PAT)
+          // 2) PRIVATE lookup (requires PAT in localStorage)
           const token = localStorage.getItem(TOKEN_STORAGE_KEY);
           if (!token) {
             showNotFoundPublicAndPrivateMissingToken();
@@ -157,7 +185,9 @@
             `https://api.github.com/repos/${PRIVATE_OWNER}/${PRIVATE_REPO}/contents/${PRIVATE_LINKS_PATH}` +
             `?ref=${encodeURIComponent(PRIVATE_BRANCH)}`;
 
-          fetch(apiUrl, {
+          console.log("[404] Fetching PRIVATE links.json from:", apiUrl);
+
+          return fetch(apiUrl, {
             headers: {
               "Accept": "application/vnd.github+json",
               "Authorization": "Bearer " + token
@@ -165,7 +195,9 @@
           })
             .then((res) => {
               if (!res.ok) {
-                throw new Error("HTTP " + res.status);
+                console.error("Private links.json fetch failed:", res.status);
+                showPrivateFetchError(res.status);
+                throw new Error("HTTP " + res.status + " when reading private links.json");
               }
               return res.json();
             })
@@ -178,7 +210,7 @@
                 console.error("Failed to parse private JSON", e);
                 dataPrivate = { links: {} };
               }
-              const linksPrivate = (dataPrivate && dataPrivate.links) || {};
+              const linksPrivate = dataPrivate && dataPrivate.links ? dataPrivate.links : {};
               const entryPrivate = linksPrivate[slug];
               const targetPrivate = getUrlFromEntry(entryPrivate);
 
@@ -187,21 +219,14 @@
               } else {
                 showNotFound();
               }
-            })
-            .catch((err) => {
-              console.error("Error reading private links.json", err);
-              titleEl.textContent = "Unable to resolve short link";
-              msgEl.textContent =
-                "An error occurred while reading the private links.json file. " +
-                "Check your token and network connection, then try again.";
             });
         })
         .catch((err) => {
-          console.error("Error reading public links.json", err);
+          console.error("Error resolving short link:", err);
           titleEl.textContent = "Unable to resolve short link";
           msgEl.textContent =
-            "An error occurred while reading the public links.json file. " +
-            "Try again later or open the admin page to verify the configuration.";
+            "An unexpected error occurred while reading links.json. " +
+            "Check your configuration, PAT, and network connection, then try again.";
         });
     })();
   </script>
