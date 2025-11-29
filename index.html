@@ -252,7 +252,7 @@
       <div class="field">
         <label for="longUrl">Long URL</label>
         <input id="longUrl" type="url" placeholder="https://example.com/very/long/link" required />
-        <div class="hint">Do not omit <code>https://</code> or <code>http://</code> in the URL.</div>
+        <div class="hint">Do not omit <code>https://</code> or <code>http://</code> from the URL.</div>
       </div>
 
       <div class="field">
@@ -263,8 +263,8 @@
 
       <div class="field">
         <label for="description">Description (optional)</label>
-        <input id="description" type="text" placeholder="e.g. Product requirement doc for XYZ" />
-        <div class="hint">Purely for your own reference. Not used in redirects.</div>
+        <input id="description" type="text" placeholder="e.g. PRD for XYZ feature" />
+        <div class="hint">For your reference only. Not used in redirect logic.</div>
       </div>
 
       <div class="field">
@@ -325,22 +325,22 @@
   </div>
 
   <script>
-    // ===== CONFIG – EDIT THESE =====
-    // Public store (Repo A – this GitHub Pages repo)
-    const PUBLIC_OWNER  = "anikethkota-hash";        // owner of the PUBLIC repo
-    const PUBLIC_REPO   = "url-shortener";     // name of the PUBLIC repo (this one)
-    const PUBLIC_BRANCH = "main";                   // branch for public repo
-    const PUBLIC_LINKS_PATH = "links.json";         // file for public links
+    // ===== CONFIG – EDIT THESE TO MATCH YOUR REPOS =====
+    // Public links repo (can be different from the Pages repo)
+    const PUBLIC_OWNER  = "anikethkota-hash";        // e.g. "anikethshenoy"
+    const PUBLIC_REPO   = "url-shortener";   // e.g. "url-shortener-public"
+    const PUBLIC_BRANCH = "main";
+    const PUBLIC_LINKS_PATH = "links.json";
 
-    // Private store (Repo B – separate PRIVATE repo)
-    const PRIVATE_OWNER  = "anikethkota-hash";       // owner of PRIVATE repo
-    const PRIVATE_REPO   = "private-db";   // name of PRIVATE repo
-    const PRIVATE_BRANCH = "main";                  // branch for private repo
-    const PRIVATE_LINKS_PATH = "links.json";        // file for private links
+    // Private links repo
+    const PRIVATE_OWNER  = "anikethkota-hash";      // often same as PUBLIC_OWNER
+    const PRIVATE_REPO   = "private-db"; // e.g. "url-shortener-private"
+    const PRIVATE_BRANCH = "main";
+    const PRIVATE_LINKS_PATH = "links.json";
 
     const TOKEN_STORAGE_KEY = "urlShortenerPrivateToken";
     const SLUG_LENGTH = 6;
-    // ===============================
+    // ===================================================
 
     const STORAGE_PUBLIC = "public";
     const STORAGE_PRIVATE = "private";
@@ -352,7 +352,7 @@
 
     let currentStorage = STORAGE_PUBLIC;
 
-    // BASE URL for short links, derived from where this page is served.
+    // Base URL for short links (derived from where this UI is hosted)
     const BASE_URL = (() => {
       const url = new URL(window.location.href);
       let path = url.pathname;
@@ -360,7 +360,7 @@
         path = path.slice(0, -"/index.html".length);
       }
       if (!path.endsWith("/")) path += "/";
-      return url.origin + path; // e.g. https://user.github.io/public-repo/
+      return url.origin + path;
     })();
 
     function buildShortUrl(slug) {
@@ -442,7 +442,7 @@
       document.getElementById("manageError").style.display = "none";
     }
 
-    // --- Token helpers ---
+    // Token helpers
     function getTokenFromInput() {
       const el = document.getElementById("token");
       return el ? el.value.trim() : "";
@@ -459,7 +459,7 @@
       }
     }
 
-    // --- Repo config based on storage kind ---
+    // Repo config
     function getRepoConfig(storage) {
       if (storage === STORAGE_PRIVATE) {
         return {
@@ -468,21 +468,20 @@
           branch: PRIVATE_BRANCH,
           path: PRIVATE_LINKS_PATH
         };
-      } else {
-        return {
-          owner: PUBLIC_OWNER,
-          repo: PUBLIC_REPO,
-          branch: PUBLIC_BRANCH,
-          path: PUBLIC_LINKS_PATH
-        };
       }
+      return {
+        owner: PUBLIC_OWNER,
+        repo: PUBLIC_REPO,
+        branch: PUBLIC_BRANCH,
+        path: PUBLIC_LINKS_PATH
+      };
     }
 
     function getCache(storage) {
       return storage === STORAGE_PRIVATE ? cache.private : cache.public;
     }
 
-    // Normalize any shape in links.json to { url, description }
+    // Convert any shape in links.json to { url, description }
     function normalizeLinksObject(rawLinks) {
       const result = {};
       if (!rawLinks || typeof rawLinks !== "object") return result;
@@ -499,10 +498,12 @@
       return result;
     }
 
-    // --- GitHub API helpers ---
+    // GitHub API helpers
     async function fetchLinksForStorage(token, storage) {
       const cfg = getRepoConfig(storage);
-      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${encodeURIComponent(cfg.branch)}`;
+      const apiUrl =
+        `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}` +
+        `?ref=${encodeURIComponent(cfg.branch)}`;
       const headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": "Bearer " + token
@@ -540,9 +541,7 @@
       };
       const c = getCache(storage);
 
-      const payload = {
-        links: c.links
-      };
+      const payload = { links: c.links };
       const newContent = JSON.stringify(payload, null, 2) + "\n";
       const body = {
         message: "Update links.json (" + storage + ")",
@@ -660,6 +659,7 @@
         tr.appendChild(tdActions);
         tbody.appendChild(tr);
 
+        // Save row
         updateBtn.addEventListener("click", async () => {
           const token = getToken();
           if (!token) {
@@ -680,15 +680,14 @@
             return;
           }
 
-          // Check for slug conflict within the same store
-          const existingLinks = getCache(currentStorage).links;
-          if (newSlug !== slug && Object.prototype.hasOwnProperty.call(existingLinks, newSlug)) {
+          const storeLinks = getCache(currentStorage).links;
+
+          // Conflict only within current store
+          if (newSlug !== slug && Object.prototype.hasOwnProperty.call(storeLinks, newSlug)) {
             showManageError("Slug '" + newSlug + "' already exists in this store.");
             return;
           }
 
-          // Apply changes to cache
-          const storeLinks = getCache(currentStorage).links;
           delete storeLinks[slug];
           storeLinks[newSlug] = {
             url: newLong,
@@ -709,6 +708,7 @@
           }
         });
 
+        // Delete row
         deleteBtn.addEventListener("click", async () => {
           const token = getToken();
           if (!token) {
@@ -743,6 +743,7 @@
 
     document.addEventListener("DOMContentLoaded", () => {
       updateStorageLabels();
+      rememberTokenIfInlinePresent();
 
       const storageRadios = document.querySelectorAll("input[name='storage']");
       storageRadios.forEach((radio) => {
@@ -764,7 +765,7 @@
       const descInput = document.getElementById("description");
       const loadLinksBtn = document.getElementById("loadLinksBtn");
 
-      // ---- Create new link (with duplicate check across public + private) ----
+      // Create new link (description optional, no cross-repo dedupe)
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const token = getToken();
@@ -796,36 +797,18 @@
           setLoading(true);
           document.getElementById("error").style.display = "none";
 
-          // Load both public and private links for duplicate checking
-          const publicLinks = await fetchLinksForStorage(token, STORAGE_PUBLIC).catch((err) => {
-            console.error("Error reading public links for duplicate check:", err);
-            return {};
-          });
-          const privateLinks = await fetchLinksForStorage(token, STORAGE_PRIVATE).catch((err) => {
-            console.error("Error reading private links for duplicate check:", err);
-            return {};
-          });
-
-          const combined = { ...publicLinks, ...privateLinks };
-
-          if (slug && Object.prototype.hasOwnProperty.call(combined, slug)) {
-            showError(
-              "Slug '" +
-                slug +
-                "' already exists in either the public or private store. Please choose a different slug."
-            );
+          // Only work with the selected store
+          const links = await fetchLinksForStorage(token, currentStorage);
+          if (slug && Object.prototype.hasOwnProperty.call(links, slug)) {
+            showError("Slug '" + slug + "' already exists in this store. Please choose a different slug.");
             setLoading(false);
             return;
           }
 
-          if (!slug) {
-            slug = generateRandomSlug(combined);
-          }
+          const finalSlug = slug || generateRandomSlug(links);
 
-          // Now work on the selected storage only
-          const targetCache = getCache(currentStorage);
-          // Ensure we have fresh links for target storage (fetchLinksForStorage above already did this)
-          targetCache.links[slug] = {
+          const c = getCache(currentStorage);
+          c.links[finalSlug] = {
             url: normalizedLong,
             description: description
           };
@@ -833,7 +816,7 @@
           rememberTokenIfInlinePresent();
           await saveLinksForStorage(token, currentStorage);
 
-          const shortUrl = buildShortUrl(slug);
+          const shortUrl = buildShortUrl(finalSlug);
           showSuccess(
             'Short URL: <a href="' +
               shortUrl +
@@ -841,16 +824,14 @@
               shortUrl +
               "</a><br />Destination: " +
               normalizedLong +
-              (description
-                ? "<br />Description: " + description
-                : "") +
+              (description ? "<br />Description: " + description : "") +
               (currentStorage === STORAGE_PRIVATE
                 ? '<br /><span class="hint">This is a <strong>private</strong> link. It will only resolve in browsers where your PAT is stored.</span>'
                 : '<br /><span class="hint">This is a <strong>public</strong> link. It will work for anyone.</span>')
           );
 
           slugInput.value = "";
-          // leave description as-is or clear it; up to you
+          // description: you can clear it or leave it; choose what feels nicer
           // descInput.value = "";
         } catch (err) {
           console.error(err);
@@ -860,7 +841,7 @@
         }
       });
 
-      // ---- Load & manage existing links ----
+      // Load & manage existing links
       loadLinksBtn.addEventListener("click", async () => {
         const token = getToken();
         if (!token) {
