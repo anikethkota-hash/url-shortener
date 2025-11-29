@@ -1,3 +1,5 @@
 {
-  "links": {}
+  "links": {
+    "test-public": "https://gemini.google.com/app"
+  }
 }
