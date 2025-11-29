@@ -1,3 +1,5 @@
 {
-  "links": {}
+  "links": {
+    "test": "https://gemini.google.com/app"
+  }
 }
