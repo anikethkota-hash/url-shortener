@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Redirecting…</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f5f5f7;
+      color: #111827;
+    }
+    .card {
+      max-width: 640px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 1rem;
+      padding: 1.75rem;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      margin-top: 0;
+      color: #4b5563;
+    }
+    .muted {
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+    a {
+      color: #4f46e5;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    code {
+      background: #e5e7eb;
+      padding: 0 0.2rem;
+      border-radius: 0.25rem;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">Checking short link…</h1>
+    <p id="message" class="muted">Please wait a moment.</p>
+    <p class="muted">
+      If nothing happens, open the admin page and make sure your token is configured.<br />
+      Admin UI: <a id="home-link" href="#">open</a>
+    </p>
+  </div>
+
+  <script>
+    // Must match index.html
+    const DATA_OWNER  = "<your-username>";       // same as in index.html
+    const DATA_REPO   = "<your-private-repo>";   // private repo with links.json
+    const DATA_BRANCH = "main";
+    const LINKS_PATH  = "links.json";
+    const TOKEN_STORAGE_KEY = "urlShortenerPrivateToken";
+
+    function b64Decode(str) {
+      return decodeURIComponent(escape(atob(str)));
+    }
+
+    (function () {
+      const url = new URL(window.location.href);
+      const parts = url.pathname.split("/").filter(Boolean); // remove empty segments
+
+      if (parts.length === 0) {
+        // Probably at root; send back to home.
+        window.location.href = url.origin + "/";
+        return;
+      }
+
+      // Repo-based GitHub Pages:
+      //   /<public-repo>/<slug>
+      const repoSegment = parts[0];
+      const slug = parts.length > 1 ? parts[1] : null;
+
+      const basePath = "/" + repoSegment + "/";
+      const baseUrl = url.origin + basePath;
+
+      const titleEl = document.getElementById("title");
+      const msgEl = document.getElementById("message");
+      const homeLink = document.getElementById("home-link");
+      homeLink.href = baseUrl;
+
+      if (!slug) {
+        window.location.href = baseUrl;
+        return;
+      }
+
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+      if (!token) {
+        titleEl.textContent = "Token required to resolve short link";
+        msgEl.textContent =
+          "No Personal Access Token is configured in this browser. " +
+          "Open the admin page, paste your GitHub PAT once, and try again.";
+        return;
+      }
+
+      const apiUrl =
+        `https://api.github.com/repos/${DATA_OWNER}/${DATA_REPO}/contents/${LINKS_PATH}` +
+        `?ref=${encodeURIComponent(DATA_BRANCH)}`;
+
+      fetch(apiUrl, {
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer " + token
+        }
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("HTTP " + res.status);
+          }
+          return res.json();
+        })
+        .then((json) => {
+          const decoded = b64Decode(json.content || "");
+          let data;
+          try {
+            data = decoded ? JSON.parse(decoded) : { links: {} };
+          } catch (e) {
+            console.error("Failed to parse JSON", e);
+            data = { links: {} };
+          }
+          const links = (data && data.links) ? data.links : {};
+          const target = links[slug];
+
+          if (target) {
+            titleEl.textContent = "Redirecting…";
+            msgEl.textContent = "Sending you to " + target;
+            window.location.href = target;
+          } else {
+            titleEl.textContent = "Short link not found";
+            msgEl.textContent =
+              "There is no entry for slug '" +
+              slug +
+              "' in the private links.json. It might have been deleted, or not created yet.";
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load links.json from private repo", err);
+          titleEl.textContent = "Unable to resolve short link";
+          msgEl.textContent =
+            "An error occurred while reading the private links.json file. " +
+            "Check your token and network connection, then try again.";
+        });
+    })();
+  </script>
+</body>
+</html>
