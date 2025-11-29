@@ -3,10 +3,6 @@
     "homepage": {
       "url": "https://www.contentstack.com/",
       "description": "Contentstack Homepage"
-    },
-    "agent": {
-      "url": "https://gemini.google.com/app",
-      "description": ""
     }
   }
 }
