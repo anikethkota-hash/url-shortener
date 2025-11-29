@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>GitHub Pages URL Shortener</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f5f5f7;
+      color: #111827;
+    }
+    .card {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 1rem;
+      padding: 1.75rem;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin: 0 0 0.5rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin: 1.5rem 0 0.5rem;
+    }
+    p {
+      margin-top: 0;
+      color: #4b5563;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    input[type="url"],
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid #d1d5db;
+      font-size: 0.95rem;
+      box-sizing: border-box;
+    }
+    input:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 1px #6366f1;
+    }
+    .field {
+      margin-bottom: 1rem;
+    }
+
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 0.55rem 1.2rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #4f46e5;
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    button[disabled] {
+      opacity: 0.6;
+      cursor: default;
+    }
+    button:hover:not([disabled]) {
+      background: #4338ca;
+    }
+
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .btn-secondary:hover:not([disabled]) {
+      background: #d1d5db;
+    }
+    .btn-danger {
+      background: #dc2626;
+    }
+    .btn-danger:hover:not([disabled]) {
+      background: #b91c1c;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #6b7280;
+      margin-top: 0.25rem;
+    }
+    .error {
+      color: #b91c1c;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .success {
+      margin-top: 0.75rem;
+      padding: 0.75rem 0.9rem;
+      border-radius: 0.75rem;
+      background: #ecfdf3;
+      color: #14532d;
+      font-size: 0.9rem;
+      border: 1px solid #bbf7d0;
+      word-break: break-all;
+    }
+    .success a {
+      color: #15803d;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .success a:hover {
+      text-decoration: underline;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 1.5rem 0;
+    }
+
+    /* Manage table */
+    .manage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .pill {
+      font-size: 0.75rem;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #4338ca;
+      display: inline-block;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.4rem 0.3rem;
+      vertical-align: top;
+    }
+    th {
+      border-bottom: 1px solid #e5e7eb;
+      color: #6b7280;
+      font-weight: 600;
+    }
+    tr:nth-child(even) td {
+      background: #f9fafb;
+    }
+    .slug-input,
+    .long-input {
+      width: 100%;
+      font-size: 0.8rem;
+      padding: 0.25rem 0.4rem;
+      border-radius: 0.4rem;
+      border: 1px solid #d1d5db;
+      box-sizing: border-box;
+    }
+    .slug-input:focus,
+    .long-input:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 1px #6366f1;
+    }
+    .actions-cell {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    .small-btn {
+      padding: 0.3rem 0.7rem;
+      font-size: 0.75rem;
+      border-radius: 999px;
+    }
+    .muted {
+      color: #9ca3af;
+      font-size: 0.8rem;
+    }
+    code {
+      background: #e5e7eb;
+      padding: 0 0.2rem;
+      border-radius: 0.25rem;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>GitHub Pages URL Shortener</h1>
+    <p>
+      Data is stored as <code>links.json</code> in a <strong>separate private repository</strong>.<br />
+      Short links look like: <code>/slug</code>
+    </p>
+
+    <div id="redirect-message" class="error" style="display:none;"></div>
+
+    <!-- CREATE FORM -->
+    <h2>Create a new short URL</h2>
+    <form id="form">
+      <div class="field">
+        <label for="longUrl">Long URL</label>
+        <input id="longUrl" type="url" placeholder="https://example.com/very/long/link" required />
+        <div class="hint">If you omit <code>https://</code> it will be added.</div>
+      </div>
+
+      <div class="field">
+        <label for="slug">Custom short name (optional)</label>
+        <input id="slug" type="text" placeholder="e.g. cs-docs" />
+        <div class="hint">Letters, numbers, dashes only. Leave empty to auto-generate.</div>
+      </div>
+
+      <div class="field">
+        <label for="token">GitHub PAT (not stored in repo)</label>
+        <input id="token" type="password" placeholder="github_pat_..." />
+        <div class="hint">
+          Fine-grained or classic token, with <strong>Contents: Read &amp; Write</strong> on the
+          <strong>private data repo</strong>.
+          It will also be stored in <code>localStorage</code> on this device so redirects can work.
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn">Shorten &amp; Save</button>
+
+      <div id="error" class="error" style="display:none;"></div>
+      <div id="success" class="success" style="display:none;"></div>
+    </form>
+
+    <hr />
+
+    <!-- MANAGE SECTION -->
+    <div class="manage-header">
+      <h2 id="manage-links">Manage existing links</h2>
+      <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+        <button type="button" id="loadLinksBtn" class="btn-secondary small-btn">
+          Load links from repo
+        </button>
+        <span class="muted">
+          View, edit, or delete existing short URLs from the private repository.
+        </span>
+      </div>
+    </div>
+
+    <div id="manageStatus" class="hint" style="margin-top:0.5rem;"></div>
+    <div id="manageError" class="error" style="display:none;"></div>
+    <div id="manageSuccess" class="success" style="display:none;"></div>
+
+    <div id="manageSection" style="display:none;margin-top:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+        <strong>All links in private <code>links.json</code></strong>
+        <span class="pill" id="count-pill"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:18%;">Slug</th>
+            <th style="width:44%;">Long URL</th>
+            <th style="width:20%;">Short URL</th>
+            <th style="width:18%;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="manageTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIG – EDIT THESE =====
+    // Private data repo (Repo B)
+    const DATA_OWNER  = "<your-username>";       // GitHub user/org that owns the PRIVATE repo
+    const DATA_REPO   = "<your-private-repo>";   // Private repo name containing links.json
+    const DATA_BRANCH = "main";                  // Branch in the private repo
+    const LINKS_PATH  = "links.json";
+    const TOKEN_STORAGE_KEY = "urlShortenerPrivateToken";
+    const SLUG_LENGTH = 6;
+    // ===============================
+
+    // BASE URL for short links, derived from where this page is served.
+    const BASE_URL = (() => {
+      const url = new URL(window.location.href);
+      let path = url.pathname;
+      if (path.endsWith("/index.html")) {
+        path = path.slice(0, -"/index.html".length);
+      }
+      if (!path.endsWith("/")) path += "/";
+      return url.origin + path; // e.g. https://user.github.io/public-repo/
+    })();
+
+    function buildShortUrl(slug) {
+      return BASE_URL + slug;
+    }
+
+    function normalizeSlug(slug) {
+      return slug.toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    }
+
+    function generateRandomSlug(existingMap) {
+      const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+      let slug;
+      do {
+        slug = "";
+        for (let i = 0; i < SLUG_LENGTH; i++) {
+          slug += chars[Math.floor(Math.random() * chars.length)];
+        }
+      } while (existingMap[slug]);
+      return slug;
+    }
+
+    function normalizeUrl(url) {
+      url = url.trim();
+      if (!url) return "";
+      if (!/^https?:\/\//i.test(url)) {
+        url = "https://" + url;
+      }
+      try {
+        return new URL(url).toString();
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function b64Decode(str) {
+      return decodeURIComponent(escape(atob(str)));
+    }
+    function b64Encode(str) {
+      return btoa(unescape(encodeURIComponent(str)));
+    }
+
+    function showError(msg) {
+      const e = document.getElementById("error");
+      e.textContent = msg;
+      e.style.display = "block";
+      document.getElementById("success").style.display = "none";
+    }
+
+    function showSuccess(html) {
+      const e = document.getElementById("success");
+      e.innerHTML = html;
+      e.style.display = "block";
+      document.getElementById("error").style.display = "none";
+    }
+
+    function setLoading(isLoading) {
+      const btn = document.getElementById("submitBtn");
+      btn.disabled = isLoading;
+      btn.textContent = isLoading ? "Saving..." : "Shorten & Save";
+    }
+
+    function setManageStatus(text) {
+      document.getElementById("manageStatus").textContent = text || "";
+    }
+    function showManageError(msg) {
+      const e = document.getElementById("manageError");
+      e.textContent = msg;
+      e.style.display = "block";
+      document.getElementById("manageSuccess").style.display = "none";
+    }
+    function showManageSuccess(html) {
+      const e = document.getElementById("manageSuccess");
+      e.innerHTML = html;
+      e.style.display = "block";
+      document.getElementById("manageError").style.display = "none";
+    }
+
+    // --- Token helpers: prefer inline field, fall back to localStorage ---
+    function getTokenFromInput() {
+      const el = document.getElementById("token");
+      return el ? el.value.trim() : "";
+    }
+    function getToken() {
+      const inline = getTokenFromInput();
+      if (inline) return inline;
+      return localStorage.getItem(TOKEN_STORAGE_KEY) || null;
+    }
+    function rememberTokenIfInlinePresent() {
+      const inline = getTokenFromInput();
+      if (inline) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, inline);
+      }
+    }
+
+    // --- GitHub API helpers against PRIVATE repo ---
+    let latestSha = null;
+    let adminLinks = {};
+
+    async function fetchLinksViaApi(token) {
+      const apiUrl = `https://api.github.com/repos/${DATA_OWNER}/${DATA_REPO}/contents/${LINKS_PATH}`;
+      const headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer " + token
+      };
+
+      const res = await fetch(apiUrl + "?ref=" + encodeURIComponent(DATA_BRANCH), { headers });
+      if (!res.ok) {
+        throw new Error("Failed to read links.json via API: HTTP " + res.status);
+      }
+      const json = await res.json();
+      latestSha = json.sha;
+      const decoded = b64Decode(json.content || "");
+      let data;
+      try {
+        data = decoded ? JSON.parse(decoded) : { links: {} };
+      } catch (e) {
+        console.error("Failed to parse JSON", e);
+        data = { links: {} };
+      }
+      if (!data.links || typeof data.links !== "object") data.links = {};
+      adminLinks = data.links;
+      return adminLinks;
+    }
+
+    async function commitLinksViaApi(token, links, message) {
+      const apiUrl = `https://api.github.com/repos/${DATA_OWNER}/${DATA_REPO}/contents/${LINKS_PATH}`;
+      const headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer " + token
+      };
+
+      if (!latestSha) {
+        await fetchLinksViaApi(token);
+      }
+
+      const data = { links: links };
+      const newContent = JSON.stringify(data, null, 2) + "\n";
+      const body = {
+        message: message,
+        content: b64Encode(newContent),
+        sha: latestSha,
+        branch: DATA_BRANCH
+      };
+
+      const res = await fetch(apiUrl, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error("PUT error", txt);
+        throw new Error("Failed to commit links.json: HTTP " + res.status);
+      }
+      const updated = await res.json();
+      latestSha = updated.content.sha;
+    }
+
+    function renderManageTable() {
+      const entries = Object.entries(adminLinks || {});
+      const section = document.getElementById("manageSection");
+      const tbody = document.getElementById("manageTableBody");
+      const countPill = document.getElementById("count-pill");
+
+      tbody.innerHTML = "";
+      if (!entries.length) {
+        section.style.display = "block";
+        countPill.textContent = "0 links";
+
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 4;
+        td.style.padding = "0.8rem";
+        td.style.textAlign = "center";
+        td.style.color = "#6b7280";
+        td.textContent = "No links found. Your private links.json file is currently empty.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      entries.sort((a, b) => a[0].localeCompare(b[0]));
+      for (const [slug, longUrl] of entries) {
+        const tr = document.createElement("tr");
+
+        const tdSlug = document.createElement("td");
+        const slugInput = document.createElement("input");
+        slugInput.type = "text";
+        slugInput.value = slug;
+        slugInput.className = "slug-input";
+        tdSlug.appendChild(slugInput);
+
+        const tdLong = document.createElement("td");
+        const longInput = document.createElement("input");
+        longInput.type = "url";
+        longInput.value = longUrl;
+        longInput.className = "long-input";
+        tdLong.appendChild(longInput);
+
+        const tdShort = document.createElement("td");
+        const shortLink = document.createElement("a");
+        shortLink.href = buildShortUrl(slug);
+        shortLink.textContent = "/" + slug;
+        shortLink.target = "_blank";
+        tdShort.appendChild(shortLink);
+
+        const tdActions = document.createElement("td");
+        tdActions.className = "actions-cell";
+        const updateBtn = document.createElement("button");
+        updateBtn.type = "button";
+        updateBtn.textContent = "Save";
+        updateBtn.className = "small-btn";
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.className = "small-btn btn-danger";
+
+        tdActions.appendChild(updateBtn);
+        tdActions.appendChild(deleteBtn);
+        tr.appendChild(tdSlug);
+        tr.appendChild(tdLong);
+        tr.appendChild(tdShort);
+        tr.appendChild(tdActions);
+        tbody.appendChild(tr);
+
+        updateBtn.addEventListener("click", async () => {
+          const token = getToken();
+          if (!token) {
+            showManageError("Paste your GitHub PAT above to edit links.");
+            return;
+          }
+
+          let newSlug = normalizeSlug(slugInput.value.trim());
+          const newLong = normalizeUrl(longInput.value.trim());
+
+          if (!newSlug) {
+            showManageError("Slug cannot be empty. Use letters, numbers, and dashes.");
+            return;
+          }
+          if (!newLong) {
+            showManageError("Please provide a valid long URL.");
+            return;
+          }
+
+          if (newSlug !== slug && adminLinks[newSlug] && adminLinks[newSlug] !== newLong) {
+            showManageError("Slug '" + newSlug + "' is already used for another URL.");
+            return;
+          }
+
+          if (newSlug !== slug) {
+            delete adminLinks[slug];
+          }
+          adminLinks[newSlug] = newLong;
+
+          try {
+            setManageStatus("Saving changes...");
+            rememberTokenIfInlinePresent();
+            await commitLinksViaApi(token, adminLinks, `Update short link '${slug}' -> '${newSlug}'`);
+            showManageSuccess("Updated link '" + newSlug + "'.");
+            renderManageTable();
+          } catch (err) {
+            console.error(err);
+            showManageError(err.message || "Failed to update link.");
+          } finally {
+            setManageStatus("");
+          }
+        });
+
+        deleteBtn.addEventListener("click", async () => {
+          const token = getToken();
+          if (!token) {
+            showManageError("Paste your GitHub PAT above to edit links.");
+            return;
+          }
+
+          if (!confirm("Delete short link '" + slug + "'? This cannot be undone.")) {
+            return;
+          }
+
+          delete adminLinks[slug];
+          try {
+            setManageStatus("Deleting link...");
+            rememberTokenIfInlinePresent();
+            await commitLinksViaApi(token, adminLinks, `Delete short link '${slug}'`);
+            showManageSuccess("Deleted link '" + slug + "'.");
+            renderManageTable();
+          } catch (err) {
+            console.error(err);
+            showManageError(err.message || "Failed to delete link.");
+          } finally {
+            setManageStatus("");
+          }
+        });
+      }
+
+      countPill.textContent = entries.length + " link" + (entries.length === 1 ? "" : "s");
+      section.style.display = "block";
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("form");
+      const longUrlInput = document.getElementById("longUrl");
+      const slugInput = document.getElementById("slug");
+      const loadLinksBtn = document.getElementById("loadLinksBtn");
+
+      // Create new link
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const token = getToken();
+        if (!token) {
+          showError("Please paste your GitHub PAT.");
+          return;
+        }
+
+        const normalizedLong = normalizeUrl(longUrlInput.value);
+        if (!normalizedLong) {
+          showError("Please enter a valid URL.");
+          return;
+        }
+
+        let slug = slugInput.value.trim();
+        if (slug) {
+          slug = normalizeSlug(slug);
+          if (!slug) {
+            showError("Custom short name becomes empty after cleaning. Use letters, numbers, and dashes.");
+            return;
+          }
+        }
+
+        try {
+          setLoading(true);
+          document.getElementById("error").style.display = "none";
+
+          await fetchLinksViaApi(token);
+          if (slug && adminLinks[slug] && adminLinks[slug] !== normalizedLong) {
+            showError("Slug '" + slug + "' is already used for another URL.");
+            setLoading(false);
+            return;
+          }
+          if (!slug) {
+            slug = generateRandomSlug(adminLinks);
+          }
+
+          adminLinks[slug] = normalizedLong;
+          rememberTokenIfInlinePresent();
+          await commitLinksViaApi(token, adminLinks, `Add short link '${slug}'`);
+
+          const shortUrl = buildShortUrl(slug);
+          showSuccess(
+            'Short URL: <a href="' +
+              shortUrl +
+              '" target="_blank" rel="noopener noreferrer">' +
+              shortUrl +
+              "</a><br />Destination: " +
+              normalizedLong +
+              '<br /><span class="hint">Short links work on this device as long as your PAT is saved in the browser.</span>'
+          );
+
+          slugInput.value = "";
+        } catch (err) {
+          console.error(err);
+          showError(err.message || "Something went wrong.");
+        } finally {
+          setLoading(false);
+        }
+      });
+
+      // Load & manage existing links
+      loadLinksBtn.addEventListener("click", async () => {
+        const token = getToken();
+        if (!token) {
+          showManageError("Paste your GitHub PAT above to load and manage links.");
+          return;
+        }
+        document.getElementById("manageError").style.display = "none";
+        document.getElementById("manageSuccess").style.display = "none";
+        setManageStatus("Loading links from private repo...");
+        try {
+          await fetchLinksViaApi(token);
+          if (!Object.keys(adminLinks).length) {
+            setManageStatus("No links found in private links.json. Create one above.");
+          } else {
+            setManageStatus("Loaded links from private repository.");
+          }
+          rememberTokenIfInlinePresent();
+          renderManageTable();
+          document.getElementById("manage-links").scrollIntoView({ behavior: "smooth" });
+        } catch (err) {
+          console.error(err);
+          showManageError(err.message || "Failed to load links from private repo.");
+        } finally {
+          setManageStatus("");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
