@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Aniketh's Personal URL Shortener</title>
+  <title>GitHub Pages URL Shortener</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body {
@@ -198,17 +198,54 @@
       border-radius: 0.25rem;
       font-size: 0.85em;
     }
+
+    .storage-toggle {
+      display:flex;
+      gap:0.75rem;
+      align-items:center;
+      margin:0.5rem 0 1rem;
+      flex-wrap:wrap;
+    }
+    .storage-toggle label {
+      font-weight:400;
+      margin-bottom:0;
+      display:flex;
+      align-items:center;
+      gap:0.25rem;
+      cursor:pointer;
+    }
+    .storage-badge {
+      font-size:0.75rem;
+      padding:0.1rem 0.5rem;
+      border-radius:999px;
+      background:#f3f4f6;
+      color:#4b5563;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Aniketh's Personal URL Shortener</h1>
+    <h1>GitHub Pages URL Shortener</h1>
     <p>
-      Data is stored as <code>links.json</code> in a <strong>separate private repository</strong>.<br />
+      <strong>Public links</strong> are stored in <code>links.json</code> in this public repo (works for everyone).<br />
+      <strong>Private links</strong> are stored in <code>links.json</code> in a separate private repo (works only in your browser with a PAT).<br />
       Short links look like: <code>/slug</code>
     </p>
 
     <div id="redirect-message" class="error" style="display:none;"></div>
+
+    <!-- STORAGE TOGGLE -->
+    <div class="storage-toggle">
+      <span class="storage-badge">Target storage:</span>
+      <label>
+        <input type="radio" name="storage" value="public" checked />
+        Public (visible to everyone)
+      </label>
+      <label>
+        <input type="radio" name="storage" value="private" />
+        Private (requires PAT to resolve)
+      </label>
+    </div>
 
     <!-- CREATE FORM -->
     <h2>Create a new short URL</h2>
@@ -229,9 +266,8 @@
         <label for="token">GitHub PAT (not stored in repo)</label>
         <input id="token" type="password" placeholder="github_pat_..." />
         <div class="hint">
-          Fine-grained or classic token, with <strong>Contents: Read &amp; Write</strong> on the
-          <strong>private data repo</strong>.
-          It will also be stored in <code>localStorage</code> on this device so redirects can work.
+          Token must have <strong>Contents: Read &amp; Write</strong> on both repos you use here.
+          It will also be stored in <code>localStorage</code> on this device so private links can resolve.
         </div>
       </div>
 
@@ -248,10 +284,10 @@
       <h2 id="manage-links">Manage existing links</h2>
       <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
         <button type="button" id="loadLinksBtn" class="btn-secondary small-btn">
-          Load links from repo
+          Load links from selected store
         </button>
         <span class="muted">
-          View, edit, or delete existing short URLs from the private repository.
+          View, edit, or delete <span id="storageLabelInline">public</span> short URLs.
         </span>
       </div>
     </div>
@@ -262,7 +298,10 @@
 
     <div id="manageSection" style="display:none;margin-top:0.75rem;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
-        <strong>All links in private <code>links.json</code></strong>
+        <strong>
+          All <span id="storageLabelHeading">public</span> links in
+          <code id="storageFileLabel">links.json (public repo)</code>
+        </strong>
         <span class="pill" id="count-pill"></span>
       </div>
       <table>
@@ -281,14 +320,25 @@
 
   <script>
     // ===== CONFIG – EDIT THESE =====
-    // Private data repo (Repo B)
-    const DATA_OWNER  = "anikethkota-hash";       // GitHub user/org that owns the PRIVATE repo
-    const DATA_REPO   = "private-db";   // Private repo name containing links.json
-    const DATA_BRANCH = "main";                  // Branch in the private repo
-    const LINKS_PATH  = "links.json";
+    // Public store (Repo A – this GitHub Pages repo)
+    const PUBLIC_OWNER  = "anikethkota-hash";        // owner of the PUBLIC repo
+    const PUBLIC_REPO   = "url-shortener";     // name of the PUBLIC repo (this one)
+    const PUBLIC_BRANCH = "main";                   // branch for public repo
+    const PUBLIC_LINKS_PATH = "links.json";         // file for public links
+
+    // Private store (Repo B – separate PRIVATE repo)
+    const PRIVATE_OWNER  = "anikethkota-hash";       // owner of PRIVATE repo
+    const PRIVATE_REPO   = "private-db";   // name of PRIVATE repo
+    const PRIVATE_BRANCH = "main";                  // branch for private repo
+    const PRIVATE_LINKS_PATH = "links.json";        // file for private links
+
     const TOKEN_STORAGE_KEY = "urlShortenerPrivateToken";
     const SLUG_LENGTH = 6;
     // ===============================
+
+    const STORAGE_PUBLIC = "public";
+    const STORAGE_PRIVATE = "private";
+    let currentStorage = STORAGE_PUBLIC;
 
     // BASE URL for short links, derived from where this page is served.
     const BASE_URL = (() => {
@@ -380,7 +430,7 @@
       document.getElementById("manageError").style.display = "none";
     }
 
-    // --- Token helpers: prefer inline field, fall back to localStorage ---
+    // --- Token helpers ---
     function getTokenFromInput() {
       const el = document.getElementById("token");
       return el ? el.value.trim() : "";
@@ -397,23 +447,44 @@
       }
     }
 
-    // --- GitHub API helpers against PRIVATE repo ---
-    let latestSha = null;
+    // --- Repo config based on storage kind ---
+    function getRepoConfig(storage) {
+      if (storage === STORAGE_PRIVATE) {
+        return {
+          owner: PRIVATE_OWNER,
+          repo: PRIVATE_REPO,
+          branch: PRIVATE_BRANCH,
+          path: PRIVATE_LINKS_PATH
+        };
+      } else {
+        return {
+          owner: PUBLIC_OWNER,
+          repo: PUBLIC_REPO,
+          branch: PUBLIC_BRANCH,
+          path: PUBLIC_LINKS_PATH
+        };
+      }
+    }
+
+    // --- GitHub API helpers ---
+    let latestShaPublic = null;
+    let latestShaPrivate = null;
     let adminLinks = {};
 
-    async function fetchLinksViaApi(token) {
-      const apiUrl = `https://api.github.com/repos/${DATA_OWNER}/${DATA_REPO}/contents/${LINKS_PATH}`;
+    async function fetchLinksViaApi(token, storage) {
+      const cfg = getRepoConfig(storage);
+      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
       const headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": "Bearer " + token
       };
 
-      const res = await fetch(apiUrl + "?ref=" + encodeURIComponent(DATA_BRANCH), { headers });
+      const res = await fetch(apiUrl + "?ref=" + encodeURIComponent(cfg.branch), { headers });
       if (!res.ok) {
         throw new Error("Failed to read links.json via API: HTTP " + res.status);
       }
+
       const json = await res.json();
-      latestSha = json.sha;
       const decoded = b64Decode(json.content || "");
       let data;
       try {
@@ -424,18 +495,28 @@
       }
       if (!data.links || typeof data.links !== "object") data.links = {};
       adminLinks = data.links;
+
+      if (storage === STORAGE_PUBLIC) {
+        latestShaPublic = json.sha;
+      } else {
+        latestShaPrivate = json.sha;
+      }
+
       return adminLinks;
     }
 
-    async function commitLinksViaApi(token, links, message) {
-      const apiUrl = `https://api.github.com/repos/${DATA_OWNER}/${DATA_REPO}/contents/${LINKS_PATH}`;
+    async function commitLinksViaApi(token, links, message, storage) {
+      const cfg = getRepoConfig(storage);
+      const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
       const headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": "Bearer " + token
       };
 
-      if (!latestSha) {
-        await fetchLinksViaApi(token);
+      let currentSha = storage === STORAGE_PUBLIC ? latestShaPublic : latestShaPrivate;
+      if (!currentSha) {
+        await fetchLinksViaApi(token, storage);
+        currentSha = storage === STORAGE_PUBLIC ? latestShaPublic : latestShaPrivate;
       }
 
       const data = { links: links };
@@ -443,8 +524,8 @@
       const body = {
         message: message,
         content: b64Encode(newContent),
-        sha: latestSha,
-        branch: DATA_BRANCH
+        sha: currentSha,
+        branch: cfg.branch
       };
 
       const res = await fetch(apiUrl, {
@@ -458,7 +539,27 @@
         throw new Error("Failed to commit links.json: HTTP " + res.status);
       }
       const updated = await res.json();
-      latestSha = updated.content.sha;
+      if (storage === STORAGE_PUBLIC) {
+        latestShaPublic = updated.content.sha;
+      } else {
+        latestShaPrivate = updated.content.sha;
+      }
+    }
+
+    function updateStorageLabels() {
+      const labelInline = document.getElementById("storageLabelInline");
+      const labelHeading = document.getElementById("storageLabelHeading");
+      const fileLabel = document.getElementById("storageFileLabel");
+
+      if (currentStorage === STORAGE_PUBLIC) {
+        labelInline.textContent = "public";
+        labelHeading.textContent = "public";
+        fileLabel.textContent = PUBLIC_LINKS_PATH + " (public repo)";
+      } else {
+        labelInline.textContent = "private";
+        labelHeading.textContent = "private";
+        fileLabel.textContent = PRIVATE_LINKS_PATH + " (private repo)";
+      }
     }
 
     function renderManageTable() {
@@ -478,7 +579,7 @@
         td.style.padding = "0.8rem";
         td.style.textAlign = "center";
         td.style.color = "#6b7280";
-        td.textContent = "No links found. Your private links.json file is currently empty.";
+        td.textContent = "No links found. The selected links.json file is currently empty.";
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -561,7 +662,7 @@
           try {
             setManageStatus("Saving changes...");
             rememberTokenIfInlinePresent();
-            await commitLinksViaApi(token, adminLinks, `Update short link '${slug}' -> '${newSlug}'`);
+            await commitLinksViaApi(token, adminLinks, `Update ${currentStorage} short link '${slug}' -> '${newSlug}'`, currentStorage);
             showManageSuccess("Updated link '" + newSlug + "'.");
             renderManageTable();
           } catch (err) {
@@ -587,7 +688,7 @@
           try {
             setManageStatus("Deleting link...");
             rememberTokenIfInlinePresent();
-            await commitLinksViaApi(token, adminLinks, `Delete short link '${slug}'`);
+            await commitLinksViaApi(token, adminLinks, `Delete ${currentStorage} short link '${slug}'`, currentStorage);
             showManageSuccess("Deleted link '" + slug + "'.");
             renderManageTable();
           } catch (err) {
@@ -604,6 +705,22 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
+      updateStorageLabels();
+
+      // Storage radio buttons
+      const storageRadios = document.querySelectorAll("input[name='storage']");
+      storageRadios.forEach(radio => {
+        radio.addEventListener("change", () => {
+          currentStorage = radio.value === STORAGE_PRIVATE ? STORAGE_PRIVATE : STORAGE_PUBLIC;
+          adminLinks = {};
+          setManageStatus("");
+          document.getElementById("manageSection").style.display = "none";
+          document.getElementById("manageError").style.display = "none";
+          document.getElementById("manageSuccess").style.display = "none";
+          updateStorageLabels();
+        });
+      });
+
       const form = document.getElementById("form");
       const longUrlInput = document.getElementById("longUrl");
       const slugInput = document.getElementById("slug");
@@ -637,7 +754,7 @@
           setLoading(true);
           document.getElementById("error").style.display = "none";
 
-          await fetchLinksViaApi(token);
+          await fetchLinksViaApi(token, currentStorage);
           if (slug && adminLinks[slug] && adminLinks[slug] !== normalizedLong) {
             showError("Slug '" + slug + "' is already used for another URL.");
             setLoading(false);
@@ -649,7 +766,7 @@
 
           adminLinks[slug] = normalizedLong;
           rememberTokenIfInlinePresent();
-          await commitLinksViaApi(token, adminLinks, `Add short link '${slug}'`);
+          await commitLinksViaApi(token, adminLinks, `Add ${currentStorage} short link '${slug}'`, currentStorage);
 
           const shortUrl = buildShortUrl(slug);
           showSuccess(
@@ -659,7 +776,9 @@
               shortUrl +
               "</a><br />Destination: " +
               normalizedLong +
-              '<br /><span class="hint">Short links work on this device as long as your PAT is saved in the browser.</span>'
+              (currentStorage === STORAGE_PRIVATE
+                ? '<br /><span class="hint">This is a <strong>private</strong> link. It will only resolve in browsers where your PAT is stored.</span>'
+                : '<br /><span class="hint">This is a <strong>public</strong> link. It will work for anyone.</span>')
           );
 
           slugInput.value = "";
@@ -680,20 +799,20 @@
         }
         document.getElementById("manageError").style.display = "none";
         document.getElementById("manageSuccess").style.display = "none";
-        setManageStatus("Loading links from private repo...");
+        setManageStatus("Loading " + currentStorage + " links from repo...");
         try {
-          await fetchLinksViaApi(token);
+          await fetchLinksViaApi(token, currentStorage);
           if (!Object.keys(adminLinks).length) {
-            setManageStatus("No links found in private links.json. Create one above.");
+            setManageStatus("No links found in the selected links.json. Create one above.");
           } else {
-            setManageStatus("Loaded links from private repository.");
+            setManageStatus("Loaded " + currentStorage + " links from repository.");
           }
           rememberTokenIfInlinePresent();
           renderManageTable();
           document.getElementById("manage-links").scrollIntoView({ behavior: "smooth" });
         } catch (err) {
           console.error(err);
-          showManageError(err.message || "Failed to load links from private repo.");
+          showManageError(err.message || "Failed to load links from selected repo.");
         } finally {
           setManageStatus("");
         }
