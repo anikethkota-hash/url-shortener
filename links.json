@@ -2,15 +2,33 @@
   "links": {
     "homepage": {
       "url": "https://www.contentstack.com/",
-      "description": "Contentstack Homepage"
+      "description": "Contentstack Homepage",
+      "tags": [],
+      "createdAt": "2025-11-30T12:43:58.546Z",
+      "updatedAt": "2025-11-30T12:43:58.546Z"
     },
     "intranet": {
       "url": "https://sites.google.com/contentstack.com/intranet/home",
-      "description": "demo"
+      "description": "demo",
+      "tags": [],
+      "createdAt": "2025-11-30T12:43:58.546Z",
+      "updatedAt": "2025-11-30T12:43:58.546Z"
     },
     "demo": {
       "url": "https://www.loom.com/share/3a0f9e2fa3db41c9afb7f631efde3bf6",
-      "description": "URL Shortener demo"
+      "description": "URL Shortener demo",
+      "tags": [],
+      "createdAt": "2025-11-30T12:43:58.546Z",
+      "updatedAt": "2025-11-30T12:43:58.546Z"
+    },
+    "test": {
+      "url": "https://gemini.google.com/index.html",
+      "description": "tesy",
+      "tags": [
+        "interal"
+      ],
+      "createdAt": "2025-11-30T12:43:58.653Z",
+      "updatedAt": "2025-11-30T12:43:58.653Z"
     }
   }
 }
