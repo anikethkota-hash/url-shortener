@@ -240,60 +240,9 @@
       font-size:0.8rem;
       background:#fff;
     }
-
-    /* PIN overlay */
-    .pin-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.55);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    }
-    .pin-card {
-      max-width: 360px;
-      width: 100%;
-      background: #ffffff;
-      border-radius: 1rem;
-      padding: 1.5rem;
-      box-shadow: 0 20px 40px rgba(15,23,42,0.25);
-    }
-    .pin-card h2 {
-      margin-top: 0;
-      margin-bottom: 0.5rem;
-      font-size: 1.1rem;
-    }
-    .pin-card p {
-      margin-top: 0;
-      font-size: 0.9rem;
-      color: #4b5563;
-    }
-    .pin-error {
-      color:#b91c1c;
-      font-size:0.8rem;
-      margin-top:0.25rem;
-    }
   </style>
 </head>
 <body>
-  <!-- PIN overlay -->
-  <div id="pinOverlay" class="pin-overlay" style="display:none;">
-    <div class="pin-card">
-      <h2>Admin access</h2>
-      <p>
-        This URL shortener UI is protected by an additional PIN on top of the GitHub PAT.
-        Enter the PIN to manage links.
-      </p>
-      <div class="field">
-        <label for="pinInput">PIN</label>
-        <input id="pinInput" type="password" placeholder="Enter PIN" />
-        <div id="pinError" class="pin-error" style="display:none;">Incorrect PIN. Please try again.</div>
-      </div>
-      <button type="button" id="pinSubmitBtn">Unlock</button>
-    </div>
-  </div>
-
   <div class="card">
     <h1>Aniketh's Personal URL Shortener URL Shortener</h1>
     <p>
@@ -427,11 +376,7 @@
     const PRIVATE_LINKS_PATH = "links.json";
 
     const TOKEN_STORAGE_KEY = "urlShortenerPrivateToken";
-    const PIN_OK_STORAGE_KEY = "urlShortenerAdminPinOk";
     const SLUG_LENGTH = 6;
-
-    // Simple UI PIN for admin panel (change this!)
-    const ADMIN_PIN = "1234";
     // ===================================================
 
     const STORAGE_PUBLIC = "public";
@@ -919,43 +864,7 @@
       section.style.display = "block";
     }
 
-    // PIN overlay logic
-    function ensurePin() {
-      const overlay = document.getElementById("pinOverlay");
-      const pinInput = document.getElementById("pinInput");
-      const pinError = document.getElementById("pinError");
-      const pinBtn = document.getElementById("pinSubmitBtn");
-
-      const alreadyOk = localStorage.getItem(PIN_OK_STORAGE_KEY) === "true";
-      if (alreadyOk || !ADMIN_PIN) {
-        overlay.style.display = "none";
-        return;
-      }
-
-      overlay.style.display = "flex";
-
-      function tryUnlock() {
-        const val = pinInput.value.trim();
-        if (val === ADMIN_PIN) {
-          localStorage.setItem(PIN_OK_STORAGE_KEY, "true");
-          overlay.style.display = "none";
-          pinError.style.display = "none";
-        } else {
-          pinError.style.display = "block";
-        }
-      }
-
-      pinBtn.addEventListener("click", tryUnlock);
-      pinInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          tryUnlock();
-        }
-      });
-    }
-
     document.addEventListener("DOMContentLoaded", () => {
-      ensurePin();
       updateStorageLabels();
       rememberTokenIfInlinePresent();
 
