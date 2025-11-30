@@ -13,15 +13,6 @@
       "tags": [],
       "createdAt": "2025-11-30T12:43:58.546Z",
       "updatedAt": "2025-11-30T12:43:58.546Z"
-    },
-    "test": {
-      "url": "https://gemini.google.com/index.html",
-      "description": "tesy",
-      "tags": [
-        "interal"
-      ],
-      "createdAt": "2025-11-30T12:43:58.653Z",
-      "updatedAt": "2025-11-30T12:43:58.653Z"
     }
   }
 }
