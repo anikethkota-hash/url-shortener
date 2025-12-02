@@ -29,6 +29,13 @@
       "tags": [],
       "createdAt": "2025-12-02T03:35:26.498Z",
       "updatedAt": "2025-12-02T03:35:26.498Z"
+    },
+    "gso-agent": {
+      "url": "https://gemini.google.com/gem/e9607e59df86",
+      "description": "",
+      "tags": [],
+      "createdAt": "2025-12-02T15:44:42.054Z",
+      "updatedAt": "2025-12-02T15:44:42.054Z"
     }
   }
 }
